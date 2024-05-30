@@ -4,57 +4,81 @@ import time
 from threading import Thread
 import serial
 import flet as ft
+from serial import SerialTimeoutException, SerialException, PortNotOpenError
 
 DELAY = 5.0
-SERIAL_PORT = "COM3"
 
-"""Returns a serial object with serial and timeout already set"""
-def setup_serial():
+def setup_serial(port="COM1"):
+    """Returns a serial object with serial and timeout already set"""
     new_serial = None
     try:
-        new_serial = serial.Serial(SERIAL_PORT,9600,timeout=DELAY)
+        new_serial = serial.Serial(port,9600,timeout=DELAY)
         return {
             "error": None,
             "new_serial": new_serial
         }
-    except Exception as error:
-        print(error)
+    except PortNotOpenError as error:
+        print(error.errno)
         return {
-            "error": "No se puede inicializar el serial",
+            "error": "No se pudo abrir el puerto serial",
             "new_serial": new_serial 
+        }
+    except SerialTimeoutException as error:
+        print(error.errno)
+        return {
+            "error": "Tiempo de espera excedido",
+            "new_serial": new_serial
+        }
+    except SerialException as error:
+        print(error.errno)
+        return {
+            "error": "Error en el puerto serial",
+            "new_serial": new_serial
         }
 
 
-"""Returns an initialized thread targeting a function"""
 def setup_threads(func):
+    """Returns an initialized thread targeting a function"""
     arduino_thread = Thread(target=func)
     arduino_thread.start()
     return arduino_thread
 
 
-"""This function setup the page and manages the page content"""
 def main(page: ft.Page):
-    serialobj = setup_serial()
-    if serialobj["error"]:
-        page.add(
-            ft.Row(
-                [
-                    ft.Text("Para ver los valores conecta el arduino")
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-            )
+    """This function setup the page and manages the page content"""
+    disabled_fields = True
+    serial_port = "COM1"
+    serial_object = setup_serial()
+    print(serial_object)
+    arduino_status = ft.Text("Conecta el arduino y selecciona el puerto serial")
+
+    page.add(
+        ft.Row(
+            [
+                arduino_status
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
         )
+    )
+
+    def add_error_message(error_message="Algo salió mal"):
+        """Adds an error message to the page"""
+        arduino_status.value = error_message
+        page.update()
+
+    if serial_object["error"] is not None:
+        disabled_fields = False
+        add_error_message(error_message=serial_object["error"])
     page.title = "Valores de arduino"
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
 
-    txt_number = ft.TextField(value="0", text_align=ft.TextAlign.RIGHT, width=100)
-    txt_humedad = ft.TextField(value="Humedad")
-    txt_temperatura = ft.TextField(value="Temperatura")
+    txt_humedad = ft.TextField(value="Humedad",read_only=True,disabled=disabled_fields)
+    txt_temperatura = ft.TextField(value="Temperatura",read_only=True,disabled=disabled_fields)
 
     def update_arduino_values():
-        serialcom = serialobj["serial"]
+        serialcom = serial_object["new_serial"]
         while True:
-            if serialobj["error"]:
+            if serial_object["error"]:
                 continue
             try:
                 serial_data = serialcom.readline().decode("utf-8")
@@ -66,22 +90,32 @@ def main(page: ft.Page):
                 pass
             time.sleep(DELAY)
 
-    def minus_click(e):
-        print(e)
-        txt_number.value = str(int(txt_number.value) - 1)
-        page.update()
+    def change_serial_port(event):
+        """Changes the serial port to the selected one"""
+        print(event)
+        serial_port = selector.value
+        serial_object = setup_serial()
+        if serial_object["error"] is not None:
+            add_error_message(error_message=serial_object["error"])
+        print(serial_port)
 
-    def plus_click(e):
-        print(e)
-        txt_number.value = str(int(txt_number.value) + 1)
-        page.update()
+    selector = ft.Dropdown(
+        width=200,
+        options=[
+            ft.dropdown.Option("COM1", "COM1"),
+            ft.dropdown.Option("COM2", "COM2"),
+            ft.dropdown.Option("COM3", "COM3"),
+            ft.dropdown.Option("COM4", "COM4"),
+        ],
+        value=serial_port,
+        label="Puerto serial",
+        on_change=change_serial_port
+    )
 
     page.add(
         ft.Row(
             [
-                ft.IconButton(ft.icons.REMOVE, on_click=minus_click),
-                txt_number,
-                ft.IconButton(ft.icons.ADD, on_click=plus_click),
+                selector
             ],
             alignment=ft.MainAxisAlignment.CENTER,
         ),
