@@ -33,6 +33,7 @@ pydantic==2.7.2
 pydantic_core==2.18.3
 Pygments==2.18.0
 pypng==0.20220715.0
+pyserial==3.5
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 python-multipart==0.0.9
@@ -42,7 +43,6 @@ qrcode==7.4.2
 repath==0.9.0
 requests==2.32.3
 rich==13.7.1
-serial==0.0.97
 shellingham==1.5.4
 six==1.16.0
 sniffio==1.3.1
