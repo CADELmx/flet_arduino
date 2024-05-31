@@ -44,7 +44,7 @@ def setup_threads(func):
     return arduino_thread
 
 
-def main(page: ft.Page,is_testing=False):
+def main(page: ft.Page):
     """This function setup the page and manages the page content"""
     disabled_fields = True
     serial_port = "COM1"
