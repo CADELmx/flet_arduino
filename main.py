@@ -72,19 +72,19 @@ def main(page: ft.Page):
     page.title = "Valores de arduino"
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
 
-    txt_humedad = ft.TextField(value="Humedad",read_only=True,disabled=disabled_fields)
-    txt_temperatura = ft.TextField(value="Temperatura",read_only=True,disabled=disabled_fields)
+    txt_humidity = ft.TextField(value="Humedad",read_only=True,disabled=disabled_fields)
+    txt_temperature = ft.TextField(value="Temperatura",read_only=True,disabled=disabled_fields)
 
     def update_arduino_values():
-        serialcom = serial_object["new_serial"]
+        serial_line = serial_object["new_serial"]
         while True:
             if serial_object["error"] is not None:
                 continue
             try:
-                serial_data = serialcom.readline().decode("utf-8")
+                serial_data = serial_line.readline().decode("utf-8")
                 decoded_data = json.loads(serial_data)
-                txt_humedad.value = decoded_data["temperatura"]
-                txt_temperatura.value = decoded_data["humedad"]
+                txt_humidity.value = decoded_data["temperatura"]
+                txt_temperature.value = decoded_data["humedad"]
                 page.update()
             except json.JSONDecodeError:
                 pass
@@ -121,13 +121,20 @@ def main(page: ft.Page):
         ),
         ft.Row(
             [
-                txt_humedad,
-                txt_temperatura
+                txt_humidity,
+                txt_temperature
             ],
             alignment=ft.MainAxisAlignment.CENTER,
         )
     )
-    setup_threads(func=update_arduino_values)
+    thread = setup_threads(func=update_arduino_values)
 
+    def close_window():
+        """Closes the serial port and finishes the thread"""
+        if serial_object["new_serial"] is not None:
+            serial_object["new_serial"].close()
+        thread.join()
+
+    page.on_close=close_window
 
 ft.app(main)
