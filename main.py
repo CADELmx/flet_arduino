@@ -67,7 +67,7 @@ def main(page: ft.Page):
         page.update()
 
     if serial_object["error"] is not None:
-        disabled_fields = False
+        disabled_fields = True
         add_error_message(error_message=serial_object["error"])
     page.title = "Valores de arduino"
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
@@ -78,7 +78,7 @@ def main(page: ft.Page):
     def update_arduino_values():
         serialcom = serial_object["new_serial"]
         while True:
-            if serial_object["error"]:
+            if serial_object["error"] is not None:
                 continue
             try:
                 serial_data = serialcom.readline().decode("utf-8")
