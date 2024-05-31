@@ -1,9 +1,9 @@
 """test for the arduino-flet application"""
 
-from main import main
+from main import tester_fun
 
 def test_main():
     """Test the main function"""
-    main()
+    tester_fun()
 
 test_main()

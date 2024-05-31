@@ -138,3 +138,7 @@ def main(page: ft.Page):
     page.on_close=close_window
 
 ft.app(main)
+
+def tester_fun():
+    """Test the main function"""
+    ft.app(main)
