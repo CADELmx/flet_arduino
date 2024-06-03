@@ -157,7 +157,8 @@ def main(page: ft.Page):
         serial_line = serial_object["new_serial"]
         print(f"{red_text.value},{green_text.value},{blue_text.value}")
         if serial_line is not None:
-            serial_line.write(f"{red_text.value},{green_text.value},{blue_text.value}".encode("utf-8"))
+            line_text = f"{red_text.value},{green_text.value},{blue_text.value}"
+            serial_line.write(line_text.encode("utf-8"))
 
     send_color_button = ft.FilledButton(
         text='Enviar color',
