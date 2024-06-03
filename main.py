@@ -1,6 +1,6 @@
 """Module for monitoring humidity and temperature"""
-import json
-import time
+from json import JSONDecodeError, loads
+from time import sleep
 from threading import Thread
 import serial
 import flet as ft
@@ -10,31 +10,22 @@ DELAY = 5.0
 
 def setup_serial(port="COM1"):
     """Returns a serial object with serial and timeout already set"""
-    new_serial = None
+    serial_ = {
+        "error": None,
+        "new_serial": None
+    }
     try:
-        new_serial = serial.Serial(port,9600,timeout=DELAY)
-        return {
-            "error": None,
-            "new_serial": new_serial
-        }
-    except PortNotOpenError as error:
-        print(error.errno)
-        return {
-            "error": "No se pudo abrir el puerto serial",
-            "new_serial": new_serial 
-        }
-    except SerialTimeoutException as error:
-        print(error.errno)
-        return {
-            "error": "Tiempo de espera excedido",
-            "new_serial": new_serial
-        }
-    except SerialException as error:
-        print(error.errno)
-        return {
-            "error": "Error en el puerto serial",
-            "new_serial": new_serial
-        }
+        serial_["new_serial"] = serial.Serial(port,9600,timeout=DELAY)
+        return serial_
+    except PortNotOpenError:
+        serial_["error"] = "Puerto serial no disponible"
+        return serial_
+    except SerialTimeoutException:
+        serial_["error"] = "Tiempo de espera excedido"
+        return serial_
+    except SerialException:
+        serial_["error"] = "Error en el puerto serial: "
+        return serial_
 
 
 def setup_threads(func):
@@ -47,8 +38,8 @@ def setup_threads(func):
 def main(page: ft.Page):
     """This function setup the page and manages the page content"""
     disabled_fields = True
-    serial_port = "COM1"
-    serial_object = setup_serial()
+    serial_port = "COM3"
+    serial_object = setup_serial(port=serial_port)
     print(serial_object)
     arduino_status = ft.Text("Conecta el arduino y selecciona el puerto serial")
 
@@ -82,22 +73,22 @@ def main(page: ft.Page):
                 continue
             try:
                 serial_data = serial_line.readline().decode("utf-8")
-                decoded_data = json.loads(serial_data)
+                decoded_data = loads(serial_data)
+                print(decoded_data)
                 txt_humidity.value = decoded_data["temperatura"]
                 txt_temperature.value = decoded_data["humedad"]
                 page.update()
-            except json.JSONDecodeError:
+            except JSONDecodeError:
                 pass
-            time.sleep(DELAY)
+            sleep(DELAY)
 
-    def change_serial_port(event):
+    def change_serial_port(serial_obj):
         """Changes the serial port to the selected one"""
-        print(event)
         serial_port = selector.value
-        serial_object = setup_serial()
-        if serial_object["error"] is not None:
-            add_error_message(error_message=serial_object["error"])
-        print(serial_port)
+        serial_obj = setup_serial(serial_port)
+        if serial_obj["error"] is not None:
+            add_error_message(error_message=serial_obj["error"])
+        print(f"Serial port changed to {serial_port}")
 
     selector = ft.Dropdown(
         width=200,
@@ -109,8 +100,71 @@ def main(page: ft.Page):
         ],
         value=serial_port,
         label="Puerto serial",
-        on_change=change_serial_port
+        on_change=lambda e: change_serial_port(serial_object)
     )
+
+    red_text = ft.Text("0",color="red")
+    green_text = ft.Text("0",color="green")
+    blue_text = ft.Text("0",color="blue")
+
+    def change_red_value(e):
+        print(e.control.value)
+        red_text.value = str(int(e.control.value))
+        page.update()
+
+    def change_green_value(e):
+        print(e.control.value)
+        green_text.value = str(int(e.control.value))
+        page.update()
+
+    def change_blue_value(e):
+        print(e.control.value)
+        blue_text.value = str(int(e.control.value))
+        page.update()
+
+    red_slider = ft.CupertinoSlider(
+        on_change=change_red_value,
+        value=0,
+        divisions=255,
+        min=0,
+        max=255,
+        active_color="red",
+        thumb_color="red",
+    )
+
+    blue_slider = ft.CupertinoSlider(
+        on_change=change_blue_value,
+        value=0,
+        divisions=255,
+        min=0,
+        max=255,
+        active_color="blue",
+        thumb_color="blue",
+    )
+
+    green_slider = ft.CupertinoSlider(
+        on_change=change_green_value,
+        value=0,
+        divisions=255,
+        min=0,
+        max=255,
+        active_color="green",
+        thumb_color="green",
+    )
+
+    def change_color():
+        """Changes the color of the LED"""
+        serial_line = serial_object["new_serial"]
+        print(f"{red_text.value},{green_text.value},{blue_text.value}")
+        if serial_line is not None:
+            serial_line.write(f"{red_text.value},{green_text.value},{blue_text.value}".encode("utf-8"))
+
+    send_color_button = ft.FilledButton(
+        text='Enviar color',
+        icon="send",
+        icon_color="white",
+        on_click=lambda e: change_color()
+        )
 
     page.add(
         ft.Row(
@@ -123,6 +177,27 @@ def main(page: ft.Page):
             [
                 txt_humidity,
                 txt_temperature
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
+        ft.Row(
+            [
+                red_text,
+                green_text,
+                blue_text
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
+        ft.Row(
+            [
+                ft.Column(
+                    [
+                        red_slider,
+                        green_slider,
+                        blue_slider,
+                        send_color_button
+                    ],
+                ),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
         )
