@@ -3,12 +3,25 @@ from json import JSONDecodeError, loads, dumps
 from time import sleep
 from threading import Thread
 import serial
-import flet as ft
+from flet import (
+    Text,
+    TextField,
+    Dropdown,
+    Row,
+    Column,
+    Page,
+    app,
+    MainAxisAlignment,
+    CupertinoSlider,
+    FilledButton,
+    dropdown,
+    ControlEvent,
+)
 from serial import SerialTimeoutException, SerialException, PortNotOpenError
 
 DELAY = 5.0
 
-def setup_serial(port="COM1"):
+def setup_serial(port:str="COM1"):
     """Returns a serial object with serial and timeout already set"""
     serial_ = {
         "error": None,
@@ -27,19 +40,23 @@ def setup_serial(port="COM1"):
         serial_["error"] = "Error en el puerto serial"
         return serial_
 
-
 def setup_threads(func):
     """Returns an initialized thread targeting a function"""
     arduino_thread = Thread(target=func)
     arduino_thread.start()
     return arduino_thread
 
-def change_field_status(fields, status=True):
+def change_field_status(fields:list, status=True):
     """Changes the status of a field"""
     for field in fields:
         field.disabled = status
 
-def update_arduino_values(serial_object,humidity_field,temperature_field,page):
+def update_arduino_values(
+    serial_object:dict,
+    humidity_field:TextField,
+    temperature_field:TextField,
+    page:Page
+):
     """Updates the humidity and temperature fields with the values from the arduino"""
     serial_line = serial_object["new_serial"]
     while True:
@@ -56,10 +73,10 @@ def update_arduino_values(serial_object,humidity_field,temperature_field,page):
             pass
         sleep(DELAY)
 
-def main(page: ft.Page):
+def main(page: Page):
     """This function setup the page and manages the page content"""
-    print(setup_serial(port="COM3")["error"])
-    arduino_status = ft.Text("Conecta el arduino y selecciona el puerto serial")
+    serial_object = setup_serial(port="COM3")
+    arduino_status = Text("Conecta el arduino y selecciona el puerto serial")
 
     def add_error_message(error_message="Algo salió mal"):
         """Adds an error message to the page"""
@@ -67,44 +84,44 @@ def main(page: ft.Page):
         page.update()
 
     page.title = "Valores de arduino"
-    page.vertical_alignment = ft.MainAxisAlignment.CENTER
+    page.vertical_alignment = MainAxisAlignment.CENTER
 
-    txt_humidity = ft.TextField(value="Humedad",read_only=True,disabled=True)
-    txt_temperature = ft.TextField(value="Temperatura",read_only=True,disabled=True)
+    txt_humidity = TextField(value="Humedad",read_only=True,disabled=True)
+    txt_temperature = TextField(value="Temperatura",read_only=True,disabled=True)
 
-    if setup_serial(port="COM3")["error"] is not None:
+    if serial_object["error"] is not None:
         change_field_status([txt_temperature, txt_humidity], status=False)
-        add_error_message(error_message=setup_serial(port="COM3")["error"])
+        add_error_message(error_message=serial_object["error"])
 
-    def change_serial_port(serial_obj,event):
+    def change_serial_port(serial_obj:dict,event:ControlEvent):
         """Changes the serial port to the selected one"""
         serial_obj = setup_serial(event.control.value)
         if serial_obj["error"] is not None:
             add_error_message(error_message=serial_obj["error"])
         print(f"Serial port changed to {event.control.value}")
 
-    red_text = ft.Text("0",color="red")
-    green_text = ft.Text("0",color="green")
-    blue_text = ft.Text("0",color="blue")
+    red_text = Text("0",color="red")
+    green_text = Text("0",color="green")
+    blue_text = Text("0",color="blue")
 
-    def change_red_value(event):
+    def change_red_value(event:ControlEvent):
         print(event.control.value)
         red_text.value = str(int(event.control.value)).zfill(3)
         page.update()
 
-    def change_green_value(event):
+    def change_green_value(event:ControlEvent):
         print(event.control.value)
         green_text.value = str(int(event.control.value)).zfill(3)
         page.update()
 
-    def change_blue_value(event):
+    def change_blue_value(event:ControlEvent):
         print(event.control.value)
         blue_text.value = str(int(event.control.value)).zfill(3)
         page.update()
 
     def change_color():
         """Changes the color of the LED"""
-        serial_line = setup_serial(port="COM3")["new_serial"]
+        serial_line = serial_object["new_serial"]
         json_data = dumps({
             "red":red_text.value,
             "green":green_text.value,
@@ -114,49 +131,49 @@ def main(page: ft.Page):
             serial_line.write(json_data.encode("utf-8"))
 
     page.add(
-        ft.Row(
+        Row(
             [
                 arduino_status
             ],
-            alignment=ft.MainAxisAlignment.CENTER,
+            alignment=MainAxisAlignment.CENTER,
         ),
-        ft.Row(
+        Row(
             [
-                ft.Dropdown(
+                Dropdown(
                     width=200,
                     options=[
-                        ft.dropdown.Option("COM1", "COM1"),
-                        ft.dropdown.Option("COM2", "COM2"),
-                        ft.dropdown.Option("COM3", "COM3"),
-                        ft.dropdown.Option("COM4", "COM4"),
+                        dropdown.Option("COM1", "COM1"),
+                        dropdown.Option("COM2", "COM2"),
+                        dropdown.Option("COM3", "COM3"),
+                        dropdown.Option("COM4", "COM4"),
                     ],
                     label="Puerto serial",
                     on_change=lambda e:
-                        change_serial_port(serial_obj=setup_serial(port="COM3"),event=e)
+                        change_serial_port(serial_obj=serial_object,event=e)
                 )
             ],
-            alignment=ft.MainAxisAlignment.CENTER,
+            alignment=MainAxisAlignment.CENTER,
         ),
-        ft.Row(
+        Row(
             [
                 txt_humidity,
                 txt_temperature
             ],
-            alignment=ft.MainAxisAlignment.CENTER,
+            alignment=MainAxisAlignment.CENTER,
         ),
-        ft.Row(
+        Row(
             [
                 red_text,
                 green_text,
                 blue_text
             ],
-            alignment=ft.MainAxisAlignment.CENTER,
+            alignment=MainAxisAlignment.CENTER,
         ),
-        ft.Row(
+        Row(
             [
-                ft.Column(
+                Column(
                     [
-                        ft.CupertinoSlider(
+                        CupertinoSlider(
                             on_change=change_red_value,
                             value=0,
                             divisions=255,
@@ -165,7 +182,7 @@ def main(page: ft.Page):
                             active_color="red",
                             thumb_color="red",
                         ),
-                        ft.CupertinoSlider(
+                        CupertinoSlider(
                             on_change=change_green_value,
                             value=0,
                             divisions=255,
@@ -174,7 +191,7 @@ def main(page: ft.Page):
                             active_color="green",
                             thumb_color="green",
                         ),
-                        ft.CupertinoSlider(
+                        CupertinoSlider(
                             on_change=change_blue_value,
                             value=0,
                             divisions=255,
@@ -183,7 +200,7 @@ def main(page: ft.Page):
                             active_color="blue",
                             thumb_color="blue",
                         ),
-                        ft.FilledButton(
+                        FilledButton(
                             text='Enviar color',
                             icon="send",
                             icon_color="white",
@@ -192,20 +209,12 @@ def main(page: ft.Page):
                     ],
                 ),
             ],
-            alignment=ft.MainAxisAlignment.CENTER,
+            alignment=MainAxisAlignment.CENTER,
         )
     )
-    thread = setup_threads(
+    setup_threads(
         func=lambda:
-            update_arduino_values(setup_serial(port="COM3"),txt_humidity,txt_temperature,page)
+            update_arduino_values(serial_object,txt_humidity,txt_temperature,page)
         )
 
-    def close_window():
-        """Closes the serial port and finishes the thread"""
-        if setup_serial(port="COM3")["new_serial"] is not None:
-            setup_serial(port="COM3")["new_serial"].close()
-        thread.join()
-
-    page.on_close=close_window
-
-ft.app(main)
+app(main)
