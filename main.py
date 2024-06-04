@@ -1,5 +1,5 @@
 """Module for monitoring humidity and temperature"""
-from json import JSONDecodeError, loads
+from json import JSONDecodeError, loads, dumps
 from time import sleep
 from threading import Thread
 import serial
@@ -155,10 +155,15 @@ def main(page: ft.Page):
     def change_color():
         """Changes the color of the LED"""
         serial_line = serial_object["new_serial"]
-        print(f"{red_text.value}{green_text.value}{blue_text.value}")
+        serial_data = {
+            "red":red_text.value,
+            "green":green_text.value,
+            "blue":blue_text.value
+        }
+        print(serial_data)
+        json_data = dumps(serial_data)
         if serial_line is not None:
-            line_text = f"{red_text.value}{green_text.value}{blue_text.value}"
-            serial_line.write(line_text.encode("utf-8"))
+            serial_line.write(json_data.encode("utf-8"))
 
     send_color_button = ft.FilledButton(
         text='Enviar color',
