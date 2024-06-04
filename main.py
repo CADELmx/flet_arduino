@@ -109,17 +109,17 @@ def main(page: ft.Page):
 
     def change_red_value(e):
         print(e.control.value)
-        red_text.value = str(int(e.control.value))
+        red_text.value = str(int(e.control.value)).zfill(3)
         page.update()
 
     def change_green_value(e):
         print(e.control.value)
-        green_text.value = str(int(e.control.value))
+        green_text.value = str(int(e.control.value)).zfill(3)
         page.update()
 
     def change_blue_value(e):
         print(e.control.value)
-        blue_text.value = str(int(e.control.value))
+        blue_text.value = str(int(e.control.value)).zfill(3)
         page.update()
 
     red_slider = ft.CupertinoSlider(
@@ -155,9 +155,9 @@ def main(page: ft.Page):
     def change_color():
         """Changes the color of the LED"""
         serial_line = serial_object["new_serial"]
-        print(f"{red_text.value},{green_text.value},{blue_text.value}")
+        print(f"{red_text.value}{green_text.value}{blue_text.value}")
         if serial_line is not None:
-            line_text = f"{red_text.value},{green_text.value},{blue_text.value}"
+            line_text = f"{red_text.value}{green_text.value}{blue_text.value}"
             serial_line.write(line_text.encode("utf-8"))
 
     send_color_button = ft.FilledButton(
