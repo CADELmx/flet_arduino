@@ -71,7 +71,7 @@ def update_arduino_values(
             page.update()
         except JSONDecodeError:
             pass
-        sleep(DELAY)
+        sleep(2.0)
 
 def main(page: Page):
     """This function setup the page and manages the page content"""
