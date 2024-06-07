@@ -2,7 +2,6 @@
 from json import JSONDecodeError, loads, dumps
 from time import sleep
 from threading import Thread
-import serial
 from flet import (
     Text,
     TextField,
@@ -17,39 +16,38 @@ from flet import (
     dropdown,
     ControlEvent,
 )
-from serial import SerialTimeoutException, SerialException, PortNotOpenError
+from serial import SerialTimeoutException, SerialException, PortNotOpenError, Serial
 
 DELAY = 5.0
 
-def setup_serial(port:str="COM1"):
+def setup_serial(port:str="COM1") -> dict[str | None,Serial | None]:
     """Returns a serial object with serial and timeout already set"""
-    serial_ = {
+    serial_instance = {
         "error": None,
         "new_serial": None
     }
     try:
-        serial_["new_serial"] = serial.Serial(port,9600,timeout=DELAY)
-        return serial_
+        serial_instance["new_serial"] = Serial(port,9600,timeout=DELAY)
+        return serial_instance
     except PortNotOpenError:
-        serial_["error"] = "Puerto serial no disponible"
-        return serial_
+        serial_instance["error"] = "Puerto serial no disponible"
+        return serial_instance
     except SerialTimeoutException:
-        serial_["error"] = "Tiempo de espera excedido"
-        return serial_
+        serial_instance["error"] = "Tiempo de espera excedido"
+        return serial_instance
     except SerialException:
-        serial_["error"] = "Error en el puerto serial"
-        return serial_
+        serial_instance["error"] = "Error en el puerto serial"
+        return serial_instance
 
-def setup_threads(func):
+def setup_threads(func) -> Thread:
     """Returns an initialized thread targeting a function"""
     arduino_thread = Thread(target=func)
     arduino_thread.start()
     return arduino_thread
 
-def change_field_status(fields:list, status=True):
+def change_field_status(fields:list[TextField], status=True) -> None:
     """Changes the status of a field"""
-    for field in fields:
-        field.disabled = status
+    map(lambda field: field.disabled == status, fields)
 
 def update_arduino_values(
     serial_object:dict,
@@ -73,33 +71,8 @@ def update_arduino_values(
             pass
         sleep(2.0)
 
-def main(page: Page):
-    """This function setup the page and manages the page content"""
-    serial_object = setup_serial(port="COM3")
-    arduino_status = Text("Conecta el arduino y selecciona el puerto serial")
 
-    def add_error_message(error_message="Algo salió mal"):
-        """Adds an error message to the page"""
-        arduino_status.value = error_message
-        page.update()
-
-    page.title = "Valores de arduino"
-    page.vertical_alignment = MainAxisAlignment.CENTER
-
-    txt_humidity = TextField(value="Humedad",read_only=True,disabled=True)
-    txt_temperature = TextField(value="Temperatura",read_only=True,disabled=True)
-
-    if serial_object["error"] is not None:
-        change_field_status([txt_temperature, txt_humidity], status=False)
-        add_error_message(error_message=serial_object["error"])
-
-    def change_serial_port(serial_obj:dict,event:ControlEvent):
-        """Changes the serial port to the selected one"""
-        serial_obj = setup_serial(event.control.value)
-        if serial_obj["error"] is not None:
-            add_error_message(error_message=serial_obj["error"])
-        print(f"Serial port changed to {event.control.value}")
-
+def rgb_component(page:Page,serial_object:dict[str | None,Serial | None]) -> tuple[Column,list[Text]]:
     red_text = Text("0",color="red")
     green_text = Text("0",color="green")
     blue_text = Text("0",color="blue")
@@ -127,8 +100,76 @@ def main(page: Page):
             "green":green_text.value,
             "blue":blue_text.value
         })
-        if serial_line is not None:
+        if not serial_line is None:
             serial_line.write(json_data.encode("utf-8"))
+
+    component = Column(
+        [
+            CupertinoSlider(
+                on_change=change_red_value,
+                value=0,
+                divisions=255,
+                min=0,
+                max=255,
+                active_color="red",
+                thumb_color="red",
+            ),
+            CupertinoSlider(
+                on_change=change_green_value,
+                value=0,
+                divisions=255,
+                min=0,
+                max=255,
+                active_color="green",
+                thumb_color="green",
+            ),
+            CupertinoSlider(
+                on_change=change_blue_value,
+                value=0,
+                divisions=255,
+                min=0,
+                max=255,
+                active_color="blue",
+                thumb_color="blue",
+            ),
+            FilledButton(
+                text='Enviar color',
+                icon="send",
+                icon_color="white",
+                on_click=lambda e: change_color()
+            )
+        ],
+    )
+    rgb_textFields = [red_text,green_text,blue_text]
+    return component, rgb_textFields
+
+def main(page: Page) -> None:
+    """This function setup the page and manages the page content"""
+    serial_object = setup_serial(port="COM3")
+    arduino_status = Text("Conecta el arduino y selecciona el puerto serial")
+    rgb_controls, rgb_text_fields = rgb_component(page,serial_object)
+    def add_error_message(error_message="Algo salió mal"):
+        """Adds an error message to the page"""
+        arduino_status.value = error_message
+        page.update()
+
+    page.title = "Valores de arduino"
+    page.vertical_alignment = MainAxisAlignment.CENTER
+
+    txt_humidity = TextField(value="Humedad",read_only=True,disabled=True)
+    txt_temperature = TextField(value="Temperatura",read_only=True,disabled=True)
+
+    if not serial_object["error"] is None:
+        change_field_status([txt_temperature, txt_humidity], status=False)
+        add_error_message(error_message=serial_object["error"])
+
+    def change_serial_port(serial_obj:dict,event:ControlEvent):
+        """Changes the serial port to the selected one"""
+        serial_obj = setup_serial(event.control.value)
+        if not serial_obj["error"] is None:
+            add_error_message(error_message=serial_obj["error"])
+            change_field_status([txt_temperature, txt_humidity], status=False)
+        print(f"Serial port changed to {event.control.value}")
 
     page.add(
         Row(
@@ -162,52 +203,12 @@ def main(page: Page):
             alignment=MainAxisAlignment.CENTER,
         ),
         Row(
-            [
-                red_text,
-                green_text,
-                blue_text
-            ],
+            rgb_text_fields,
             alignment=MainAxisAlignment.CENTER,
         ),
         Row(
             [
-                Column(
-                    [
-                        CupertinoSlider(
-                            on_change=change_red_value,
-                            value=0,
-                            divisions=255,
-                            min=0,
-                            max=255,
-                            active_color="red",
-                            thumb_color="red",
-                        ),
-                        CupertinoSlider(
-                            on_change=change_green_value,
-                            value=0,
-                            divisions=255,
-                            min=0,
-                            max=255,
-                            active_color="green",
-                            thumb_color="green",
-                        ),
-                        CupertinoSlider(
-                            on_change=change_blue_value,
-                            value=0,
-                            divisions=255,
-                            min=0,
-                            max=255,
-                            active_color="blue",
-                            thumb_color="blue",
-                        ),
-                        FilledButton(
-                            text='Enviar color',
-                            icon="send",
-                            icon_color="white",
-                            on_click=lambda e: change_color()
-                        )
-                    ],
-                ),
+                rgb_controls
             ],
             alignment=MainAxisAlignment.CENTER,
         )
