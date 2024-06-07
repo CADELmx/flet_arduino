@@ -54,7 +54,7 @@ def update_arduino_values(
     humidity_field:TextField,
     temperature_field:TextField,
     page:Page
-):
+    ):
     """Updates the humidity and temperature fields with the values from the arduino"""
     serial_line = serial_object["new_serial"]
     while True:
@@ -72,7 +72,11 @@ def update_arduino_values(
         sleep(2.0)
 
 
-def rgb_component(page:Page,serial_object:dict[str | None,Serial | None]) -> tuple[Column,list[Text]]:
+def rgb_component(
+        page:Page,
+        serial_object:dict[str | None,Serial | None]
+        ) -> tuple[Column,list[Text]]:
+    """Returns a component with RGB sliders and text fields"""
     red_text = Text("0",color="red")
     green_text = Text("0",color="green")
     blue_text = Text("0",color="blue")
@@ -140,8 +144,8 @@ def rgb_component(page:Page,serial_object:dict[str | None,Serial | None]) -> tup
             )
         ],
     )
-    rgb_textFields = [red_text,green_text,blue_text]
-    return component, rgb_textFields
+    rgb_textfields = [red_text,green_text,blue_text]
+    return component, rgb_textfields
 
 def main(page: Page) -> None:
     """This function setup the page and manages the page content"""
