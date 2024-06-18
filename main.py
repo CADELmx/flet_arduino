@@ -20,24 +20,32 @@ from serial import SerialTimeoutException, SerialException, PortNotOpenError, Se
 
 DELAY = 5.0
 
-def setup_serial(port:str="COM1") -> dict[str | None,Serial | None]:
+def setup_serial(port:str="COM1") -> dict[str | None, Serial | None]:
     """Returns a serial object with serial and timeout already set"""
     serial_instance = {
         "error": None,
         "new_serial": None
     }
     try:
-        serial_instance["new_serial"] = Serial(port,9600,timeout=DELAY)
-        return serial_instance
+        new_serial = Serial(port,9600,timeout=DELAY)
+        serial_instance.update("new_serial",new_serial)
     except PortNotOpenError:
-        serial_instance["error"] = "Puerto serial no disponible"
-        return serial_instance
+        serial_instance.update("error","Error al abrir puerto")
     except SerialTimeoutException:
-        serial_instance["error"] = "Tiempo de espera excedido"
-        return serial_instance
+        serial_instance.update("error","Tiempo de espera excedido")
     except SerialException:
-        serial_instance["error"] = "Error en el puerto serial"
-        return serial_instance
+        serial_instance.update("error","Error en el puerto serial")
+    return serial_instance
+
+
+def update_serial_instance(
+        old_instance:dict[str | None, Serial | None],
+        new_instance:dict
+        ) -> dict[str | None, Serial | None]:
+    """Updates the old serial object and sets new values from another serial object"""
+    new_instance.update("error",old_instance.get("error"))
+    new_instance.update("new_serial",old_instance.get("new_serial"))
+    return new_instance
 
 def setup_threads(func) -> Thread:
     """Returns an initialized thread targeting a function"""
@@ -56,9 +64,9 @@ def update_arduino_values(
     page:Page
     ):
     """Updates the humidity and temperature fields with the values from the arduino"""
-    serial_line = serial_object["new_serial"]
+    serial_line = serial_object.get("new_serial")
     while True:
-        if serial_object["error"] is not None:
+        if serial_object.get("error") is not None:
             continue
         try:
             serial_data = serial_line.readline().decode("utf-8")
@@ -69,7 +77,7 @@ def update_arduino_values(
             page.update()
         except JSONDecodeError:
             pass
-        sleep(2.0)
+        sleep(0.5)
 
 
 def rgb_component(
@@ -98,7 +106,7 @@ def rgb_component(
 
     def change_color():
         """Changes the color of the LED"""
-        serial_line = serial_object["new_serial"]
+        serial_line = serial_object.get("new_serial")
         json_data = dumps({
             "red":red_text.value,
             "green":green_text.value,
@@ -144,8 +152,14 @@ def rgb_component(
             )
         ],
     )
-    rgb_textfields = [red_text,green_text,blue_text]
-    return component, rgb_textfields
+    rgb_text_fields = [red_text,green_text,blue_text]
+    return component, rgb_text_fields
+
+def set_title(page:Page):
+    """Sets the title and the alignment of the page"""
+    page.title = "Valores de arduino"
+    page.vertical_alignment = MainAxisAlignment.CENTER
+
 
 def main(page: Page) -> None:
     """This function setup the page and manages the page content"""
@@ -157,22 +171,27 @@ def main(page: Page) -> None:
         arduino_status.value = error_message
         page.update()
 
-    page.title = "Valores de arduino"
-    page.vertical_alignment = MainAxisAlignment.CENTER
+    set_title(page=page)
 
     txt_humidity = TextField(value="Humedad",read_only=True,disabled=True)
     txt_temperature = TextField(value="Temperatura",read_only=True,disabled=True)
 
-    if not serial_object["error"] is None:
+    if not serial_object.get("error") is None:
         change_field_status([txt_temperature, txt_humidity], status=False)
-        add_error_message(error_message=serial_object["error"])
+        add_error_message(error_message=serial_object.get("error"))
 
     def change_serial_port(serial_obj:dict,event:ControlEvent):
         """Changes the serial port to the selected one"""
-        serial_obj = setup_serial(event.control.value)
-        if not serial_obj["error"] is None:
-            add_error_message(error_message=serial_obj["error"])
+        new_instance = update_serial_instance(
+            old_instance=serial_obj,
+            new_instance=setup_serial(event.control.value)
+            )
+        if not new_instance.get("error") is None:
             change_field_status([txt_temperature, txt_humidity], status=False)
+            add_error_message(error_message=new_instance.get("error"))
+        else:
+            change_field_status([txt_temperature,txt_humidity], status=True)
+            add_error_message(error_message="Conectado al arduino")
         print(f"Serial port changed to {event.control.value}")
 
     page.add(
