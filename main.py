@@ -20,7 +20,7 @@ from serial import SerialTimeoutException, SerialException, PortNotOpenError, Se
 
 DELAY = 5.0
 
-def setup_serial(port:str="COM1") -> dict[str | None, Serial | None]:
+def setup_serial(port:str="COM1") -> dict[str,None]:
     """Returns a serial object with serial and timeout already set"""
     serial_instance = {
         "error": None,
@@ -39,9 +39,9 @@ def setup_serial(port:str="COM1") -> dict[str | None, Serial | None]:
 
 
 def update_serial_instance(
-        old_instance:dict[str | None, Serial | None],
+        old_instance:dict,
         new_instance:dict
-        ) -> dict[str | None, Serial | None]:
+        ) -> dict[str,None]:
     """Updates the old serial object and sets new values from another serial object"""
     new_instance.update("error",old_instance.get("error"))
     new_instance.update("new_serial",old_instance.get("new_serial"))
@@ -53,7 +53,7 @@ def setup_threads(func) -> Thread:
     arduino_thread.start()
     return arduino_thread
 
-def change_field_status(fields:list[TextField], status=True) -> None:
+def change_field_status(fields:list, status=True) -> None:
     """Changes the status of a field"""
     map(lambda field: field.disabled == status, fields)
 
@@ -82,8 +82,8 @@ def update_arduino_values(
 
 def rgb_component(
         page:Page,
-        serial_object:dict[str | None,Serial | None]
-        ) -> tuple[Column,list[Text]]:
+        serial_object:dict[str,None,]
+        ):
     """Returns a component with RGB sliders and text fields"""
     red_text = Text("0",color="red")
     green_text = Text("0",color="green")
