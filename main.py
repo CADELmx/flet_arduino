@@ -20,7 +20,7 @@ from serial import SerialTimeoutException, SerialException, PortNotOpenError, Se
 
 DELAY = 5.0
 
-def setup_serial(port:str="COM1") -> dict[str,None]:
+def setup_serial(port:str="COM1") -> dict:
     """Returns a serial object with serial and timeout already set"""
     serial_instance = {
         "error": None,
@@ -41,7 +41,7 @@ def setup_serial(port:str="COM1") -> dict[str,None]:
 def update_serial_instance(
         old_instance:dict,
         new_instance:dict
-        ) -> dict[str,None]:
+        ) -> dict:
     """Updates the old serial object and sets new values from another serial object"""
     new_instance.update("error",old_instance.get("error"))
     new_instance.update("new_serial",old_instance.get("new_serial"))
@@ -82,7 +82,7 @@ def update_arduino_values(
 
 def rgb_component(
         page:Page,
-        serial_object:dict[str,None,]
+        serial_object:dict
         ):
     """Returns a component with RGB sliders and text fields"""
     red_text = Text("0",color="red")
