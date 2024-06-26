@@ -6,10 +6,14 @@ void setup() {
   mlx.begin();  
 }
 void loop() {
-  Serial.print("Ambiente = ");
-  Serial.print(mlx.readAmbientTempC()); 
-  Serial.print("ºC\tObjeto = "); 
-  Serial.print(mlx.readObjectTempC()); 
-  Serial.println("ºC");
+  double tempc = mlx.readAmbientTempC()
+  double objtempc = mlx.readObjectTempC()
+  if (!isnan(tempc) && !isnan(objtempc)){
+    Serial.print("Ambiente = ");
+    Serial.print(tempc); 
+    Serial.print("ºC\tObjeto = "); 
+    Serial.print(objtempc); 
+    Serial.println("ºC");
+  }
   delay(500);
 }
