@@ -6,8 +6,8 @@ void setup() {
   mlx.begin();  
 }
 void loop() {
-  double tempc = mlx.readAmbientTempC()
-  double objtempc = mlx.readObjectTempC()
+  float tempc = mlx.readAmbientTempC()
+  float objtempc = mlx.readObjectTempC()
   if (!isnan(tempc) && !isnan(objtempc)){
     Serial.print("Ambiente = ");
     Serial.print(tempc); 
