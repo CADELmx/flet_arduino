@@ -3,7 +3,9 @@
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
 void setup() {
   Serial.begin(9600);
-  mlx.begin();  
+  if(!mlx.begin()){
+    Serial.println("error al conectar al sensor")
+  } 
 }
 void loop() {
   float tempc = mlx.readAmbientTempC()
