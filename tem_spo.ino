@@ -2,6 +2,7 @@
 #include "MAX30105.h"
 #include "spo2_algorithm.h"
 #include <Adafruit_MLX90614.h>
+#include <ArduinoJson.h>
 
 MAX30105 particleSensor;
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
@@ -72,7 +73,6 @@ void loop() {
     Serial.print(redBuffer[i], DEC);
     Serial.print(F(", IR="));
     Serial.println(irBuffer[i], DEC);
-    
   }
 
   // calcula la frecuencia cardíaca y el SpO2 después de las primeras 100 muestras (primeros 4 segundos de muestras)
@@ -86,6 +86,8 @@ void loop() {
       irBuffer[i - 25] = irBuffer[i];
     }
 
+    bool fingerDetected = false; // Flag to check if finger is detected
+
     // toma 25 conjuntos de muestras antes de calcular la frecuencia cardíaca
     for (byte i = 75; i < 100; i++) {
       while (particleSensor.available() == false) // ¿tenemos nuevos datos?
@@ -97,43 +99,43 @@ void loop() {
       irBuffer[i] = particleSensor.getIR();
       particleSensor.nextSample(); // Terminamos con esta muestra, así que pasamos a la siguiente
 
-      // envía muestras y resultados de cálculo al programa de terminal a través de UART
-      Serial.print("\n");
-      Serial.print(F("rojo="));
-      Serial.print(redBuffer[i], DEC);
-      Serial.print(F(", IR="));
-      Serial.print(irBuffer[i], DEC);
-      Serial.print("\n");
-
-      Serial.print(F(" HR="));
-      Serial.print(heartRate, DEC);
-
-      Serial.print(F(", HRválido="));
-      Serial.print(validHeartRate, DEC);
-
-      Serial.print(F(", SpO2="));
-      Serial.print(spo2, DEC);
-
-      Serial.print(F(", SpO2válido="));
-      Serial.println(validSPO2, DEC);
+      // Check if the finger is detected based on the IR signal value
+      if (irBuffer[i] > 50000) { // You might need to adjust this threshold value based on your testing
+        fingerDetected = true;
+      }
 
       // Leer y mostrar la temperatura del sensor MLX90614
       float tempc = mlx.readAmbientTempC();
       float objtempc = mlx.readObjectTempC();
       if (!isnan(tempc) && !isnan(objtempc)){
+        // Crear un documento JSON
+        StaticJsonDocument<200> doc;
+        doc["red"] = redBuffer[i];
+        doc["ir"] = irBuffer[i];
+        doc["heartRate"] = heartRate;
+        doc["validHeartRate"] = validHeartRate;
+        doc["spo2"] = spo2;
+        doc["validSPO2"] = validSPO2;
+        doc["ambientTempC"] = tempc;
+        doc["objectTempC"] = objtempc;
 
-        Serial.print("\n");
-        Serial.print("Ambiente = ");
-        Serial.print(tempc); 
-        Serial.print("ºC\tObjeto = "); 
-        Serial.print(objtempc); 
-        Serial.println("ºC");
+        if (!fingerDetected) {
+          doc["status"] = "Finger not detected";
+        }
+
+        // Serializar el JSON y enviarlo al puerto serie
+        serializeJson(doc, Serial);
+        Serial.println();
       }
       
-      delay(1500);
+      //delay(500);
     }
 
     // Después de recopilar 25 nuevas muestras, recalcula FC y SpO2
     maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+
+    if (!fingerDetected) {
+      Serial.println("No se detecta un dedo. Por favor, coloque su dedo en el sensor.");
+    }
   }
 }
