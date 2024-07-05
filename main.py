@@ -3,6 +3,10 @@ from json import JSONDecodeError, loads, dumps
 from time import sleep
 from threading import Thread
 from flet import (
+    icons,
+    NavigationBar,
+    NavigationDestination,
+    View,
     Text,
     TextField,
     Dropdown,
@@ -28,13 +32,13 @@ def setup_serial(port:str="COM1") -> dict:
     }
     try:
         new_serial = Serial(port,9600,timeout=DELAY)
-        serial_instance.update("new_serial",new_serial)
+        serial_instance.update({"new_serial":new_serial})
     except PortNotOpenError:
-        serial_instance.update("error","Error al abrir puerto")
+        serial_instance.update({"error":"Error al abrir puerto"})
     except SerialTimeoutException:
-        serial_instance.update("error","Tiempo de espera excedido")
+        serial_instance.update({"error":"Tiempo de espera excedido"})
     except SerialException:
-        serial_instance.update("error","Error en el puerto serial")
+        serial_instance.update({"error":"Error en el puerto serial"})
     return serial_instance
 
 
@@ -43,9 +47,9 @@ def update_serial_instance(
         new_instance:dict
         ) -> dict:
     """Updates the old serial object and sets new values from another serial object"""
-    new_instance.update("error",old_instance.get("error"))
-    new_instance.update("new_serial",old_instance.get("new_serial"))
-    return new_instance
+    old_instance.update({"error":new_instance.get("error")})
+    old_instance.update({"new_serial":new_instance.get("new_serial")})
+    return old_instance
 
 def setup_threads(func) -> Thread:
     """Returns an initialized thread targeting a function"""
@@ -53,9 +57,32 @@ def setup_threads(func) -> Thread:
     arduino_thread.start()
     return arduino_thread
 
+def join_threads(thread: Thread):
+    thread.join()
+
 def change_field_status(fields:list, status=True) -> None:
     """Changes the status of a field"""
     map(lambda field: field.disabled == status, fields)
+
+def update_arduino_mlx(
+    serial_object:dict,
+    data_field: TextField,
+    page: Page
+):
+    """Updates the mlx sensor data with values from the arduino"""
+    serial_line: Serial = serial_object.get("new_serial")
+    while True:
+        if serial_object.get("new_serial") is None:
+            continue
+        try:
+            serial_data = serial_line.readline().decode("utf-8")
+            decoded_data = loads(serial_data)
+            print(decoded_data)
+            data_field.value = decoded_data
+            page.update()
+        except JSONDecodeError:
+            pass
+        sleep(0.5)
 
 def update_arduino_values(
     serial_object:dict,
@@ -64,9 +91,9 @@ def update_arduino_values(
     page:Page
     ):
     """Updates the humidity and temperature fields with the values from the arduino"""
-    serial_line = serial_object.get("new_serial")
+    serial_line: Serial = serial_object.get("new_serial")
     while True:
-        if serial_object.get("error") is not None:
+        if serial_object.get("new_serial") is None:
             continue
         try:
             serial_data = serial_line.readline().decode("utf-8")
@@ -163,7 +190,23 @@ def set_title(page:Page):
 
 def main(page: Page) -> None:
     """This function setup the page and manages the page content"""
-    serial_object = setup_serial(port="COM3")
+    
+    def change_routes(e):
+        if e.data == 0:
+            page.go('/')
+        if e.data == 1:
+            page.go('/mlx')
+        page.update()
+    
+    nav_bar = NavigationBar(
+                            adaptive=True,
+                            on_change=change_routes,
+                            destinations=[
+                                NavigationDestination(label="Inicio",data='/e',icon=icons.HOME),
+                                NavigationDestination(label="MLX",data='/rea',icon=icons.CABLE)
+                            ]
+                        )
+    serial_object = setup_serial(port="COM1")
     arduino_status = Text("Conecta el arduino y selecciona el puerto serial")
     rgb_controls, rgb_text_fields = rgb_component(page,serial_object)
     def add_error_message(error_message="Algo salió mal"):
@@ -175,26 +218,32 @@ def main(page: Page) -> None:
 
     txt_humidity = TextField(value="Humedad",read_only=True,disabled=True)
     txt_temperature = TextField(value="Temperatura",read_only=True,disabled=True)
-
+    txt_mlx = TextField(value='MLX',read_only=True,disabled=True)
     if not serial_object.get("error") is None:
         change_field_status([txt_temperature, txt_humidity], status=False)
         add_error_message(error_message=serial_object.get("error"))
 
     def change_serial_port(serial_obj:dict,event:ControlEvent):
         """Changes the serial port to the selected one"""
+        if not type(event.control.value) == str:
+            return
+        if not "COM" in event.control.value:
+            return
+        if serial_obj.get('new_serial').port == event.control.value:
+            return
         new_instance = update_serial_instance(
             old_instance=serial_obj,
             new_instance=setup_serial(event.control.value)
             )
         if not new_instance.get("error") is None:
-            change_field_status([txt_temperature, txt_humidity], status=False)
+            change_field_status([txt_temperature, txt_humidity, txt_mlx], status=False)
             add_error_message(error_message=new_instance.get("error"))
         else:
-            change_field_status([txt_temperature,txt_humidity], status=True)
+            change_field_status([txt_temperature,txt_humidity, txt_mlx], status=True)
             add_error_message(error_message="Conectado al arduino")
         print(f"Serial port changed to {event.control.value}")
-
-    page.add(
+    
+    general_arduino_controls = [
         Row(
             [
                 arduino_status
@@ -218,27 +267,74 @@ def main(page: Page) -> None:
             ],
             alignment=MainAxisAlignment.CENTER,
         ),
-        Row(
-            [
-                txt_humidity,
-                txt_temperature
-            ],
-            alignment=MainAxisAlignment.CENTER,
-        ),
-        Row(
-            rgb_text_fields,
-            alignment=MainAxisAlignment.CENTER,
-        ),
-        Row(
-            [
-                rgb_controls
-            ],
-            alignment=MainAxisAlignment.CENTER,
+    ]
+    
+    def route_change(route):
+        page.views.clear()
+        page.views.append(
+            View(
+                '/',
+                [
+                    *general_arduino_controls,
+                    Row(
+                        [
+                            txt_humidity,
+                            txt_temperature
+                        ],
+                        alignment=MainAxisAlignment.CENTER,
+                    ),
+                    Row(
+                        rgb_text_fields,
+                        alignment=MainAxisAlignment.CENTER,
+                    ),
+                    Row(
+                        [
+                            rgb_controls
+                        ],
+                        alignment=MainAxisAlignment.CENTER,
+                    )
+                ],
+                navigation_bar=nav_bar
+            )
         )
-    )
-    setup_threads(
-        func=lambda:
+        if page.route == "/mlx":
+            page.views.append(
+                View(
+                    "/mlx",
+                    [
+                        *general_arduino_controls,
+                        Row(
+                            [
+                                txt_mlx
+                            ],
+                            alignment=MainAxisAlignment.CENTER,
+                        )
+                    ],
+                    navigation_bar=nav_bar
+                )
+            )
+        page.update()
+
+    def view_pop(view):
+        page.views.pop()
+        top_view = page.views[-1]
+        page.go(top_view.route)
+
+    page.navigation_bar = nav_bar
+    page.on_route_change = route_change
+    page.on_view_pop = view_pop
+    page.go('/mlx')
+    if page.route == '/':
+        setup_threads(
+            func=lambda:
             update_arduino_values(serial_object,txt_humidity,txt_temperature,page)
         )
+    if page.route == '/mlx':
+        setup_threads(
+            func=lambda:
+            update_arduino_mlx(serial_object,txt_mlx,page)
+        )
+
+
 
 app(main)
