@@ -3,6 +3,7 @@ from json import JSONDecodeError, loads, dumps
 from time import sleep
 from threading import Thread
 from flet import (
+    WEB_BROWSER,
     icons,
     NavigationBar,
     NavigationDestination,
@@ -58,6 +59,7 @@ def setup_threads(func) -> Thread:
     return arduino_thread
 
 def join_threads(thread: Thread):
+    """Joins a thread"""
     thread.join()
 
 def change_field_status(fields:list, status=True) -> None:
@@ -72,7 +74,7 @@ def update_arduino_mlx(
     """Updates the mlx sensor data with values from the arduino"""
     serial_line: Serial = serial_object.get("new_serial")
     while True:
-        if serial_object.get("new_serial") is None:
+        if serial_line is None:
             continue
         try:
             serial_data = serial_line.readline().decode("utf-8")
@@ -93,7 +95,7 @@ def update_arduino_values(
     """Updates the humidity and temperature fields with the values from the arduino"""
     serial_line: Serial = serial_object.get("new_serial")
     while True:
-        if serial_object.get("new_serial") is None:
+        if serial_line is None:
             continue
         try:
             serial_data = serial_line.readline().decode("utf-8")
@@ -105,7 +107,6 @@ def update_arduino_values(
         except JSONDecodeError:
             pass
         sleep(0.5)
-
 
 def rgb_component(
         page:Page,
@@ -133,7 +134,7 @@ def rgb_component(
 
     def change_color():
         """Changes the color of the LED"""
-        serial_line = serial_object.get("new_serial")
+        serial_line: Serial = serial_object.get("new_serial")
         json_data = dumps({
             "red":red_text.value,
             "green":green_text.value,
@@ -187,23 +188,37 @@ def set_title(page:Page):
     page.title = "Valores de arduino"
     page.vertical_alignment = MainAxisAlignment.CENTER
 
+def change_routes(event,page:Page):
+    """Changes the routes of the page"""
+    if event.data == 0:
+        page.go('/')
+    if event.data == 1:
+        page.go('/mlx')
+    page.update()
 
 def main(page: Page) -> None:
     """This function setup the page and manages the page content"""
-    
-    def change_routes(e):
-        if e.data == 0:
-            page.go('/')
-        if e.data == 1:
-            page.go('/mlx')
-        page.update()
-    
+    def get_target():
+        if page.route == "/":
+            return update_arduino_values(
+                serial_object=serial_object,
+                humidity_field=txt_humidity,
+                temperature_field=txt_temperature,
+                page=page
+                )
+        if page.route == "/mlx":
+            return update_arduino_mlx(
+                serial_object=serial_object,
+                data_field=txt_mlx,
+                page=page
+                )
+
     nav_bar = NavigationBar(
                             adaptive=True,
-                            on_change=change_routes,
+                            on_change=lambda e: change_routes(event=e,page=page),
                             destinations=[
-                                NavigationDestination(label="Inicio",data='/e',icon=icons.HOME),
-                                NavigationDestination(label="MLX",data='/rea',icon=icons.CABLE)
+                                NavigationDestination(label="Inicio",icon=icons.HOME),
+                                NavigationDestination(label="MLX",icon=icons.CABLE)
                             ]
                         )
     serial_object = setup_serial(port="COM1")
@@ -215,22 +230,31 @@ def main(page: Page) -> None:
         page.update()
 
     set_title(page=page)
+    def activate_mlx(_):
+        serial_line: Serial = serial_object.get("new_serial")
+        if serial_line is None:
+            print("Activating MLX sensor")
+            serial_line.write("run MODE-55\r\n".encode("utf-8"))
 
     txt_humidity = TextField(value="Humedad",read_only=True,disabled=True)
     txt_temperature = TextField(value="Temperatura",read_only=True,disabled=True)
     txt_mlx = TextField(value='MLX',read_only=True,disabled=True)
+    activate_mlx_button = FilledButton(text='Activar MLX',on_click=activate_mlx)
     if not serial_object.get("error") is None:
         change_field_status([txt_temperature, txt_humidity], status=False)
         add_error_message(error_message=serial_object.get("error"))
 
+    arduino_thread = setup_threads(func=get_target())
+
     def change_serial_port(serial_obj:dict,event:ControlEvent):
         """Changes the serial port to the selected one"""
-        if not type(event.control.value) == str:
+        if not isinstance(event.control.value,str):
             return
         if not "COM" in event.control.value:
             return
-        if serial_obj.get('new_serial').port == event.control.value:
-            return
+        if not serial_obj.get('new_serial') is None:
+            if serial_obj.get('new_serial').port == event.control.value:
+                return
         new_instance = update_serial_instance(
             old_instance=serial_obj,
             new_instance=setup_serial(event.control.value)
@@ -241,8 +265,10 @@ def main(page: Page) -> None:
         else:
             change_field_status([txt_temperature,txt_humidity, txt_mlx], status=True)
             add_error_message(error_message="Conectado al arduino")
+            join_threads(thread=arduino_thread)
+            setup_threads(func=get_target())
         print(f"Serial port changed to {event.control.value}")
-    
+
     general_arduino_controls = [
         Row(
             [
@@ -268,8 +294,9 @@ def main(page: Page) -> None:
             alignment=MainAxisAlignment.CENTER,
         ),
     ]
-    
+
     def route_change(route):
+        print(f"Route changed to {route}")
         page.views.clear()
         page.views.append(
             View(
@@ -308,6 +335,12 @@ def main(page: Page) -> None:
                                 txt_mlx
                             ],
                             alignment=MainAxisAlignment.CENTER,
+                        ),
+                        Row(
+                            [
+                                activate_mlx_button,
+                            ],
+                            alignment=MainAxisAlignment.CENTER,
                         )
                     ],
                     navigation_bar=nav_bar
@@ -316,6 +349,7 @@ def main(page: Page) -> None:
         page.update()
 
     def view_pop(view):
+        print(f"View popped {view.route}")
         page.views.pop()
         top_view = page.views[-1]
         page.go(top_view.route)
@@ -324,17 +358,5 @@ def main(page: Page) -> None:
     page.on_route_change = route_change
     page.on_view_pop = view_pop
     page.go('/mlx')
-    if page.route == '/':
-        setup_threads(
-            func=lambda:
-            update_arduino_values(serial_object,txt_humidity,txt_temperature,page)
-        )
-    if page.route == '/mlx':
-        setup_threads(
-            func=lambda:
-            update_arduino_mlx(serial_object,txt_mlx,page)
-        )
 
-
-
-app(main)
+app(target=main,view=WEB_BROWSER)
