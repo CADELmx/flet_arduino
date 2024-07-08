@@ -342,7 +342,7 @@ def main(page: Page):
     def close():
         serial.close()
         thread.join()
-    page.on_close = close
+    page.on_disconnect=close
 
 if __name__ == "__main__":
     app(target=main)
