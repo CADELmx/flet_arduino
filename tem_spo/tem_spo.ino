@@ -2,6 +2,7 @@
 #include "MAX30105.h"
 #include "spo2_algorithm.h"
 #include <Adafruit_MLX90614.h>
+#include <ArduinoJson.hpp>
 #include <ArduinoJson.h>
 
 MAX30105 particleSensor;
@@ -69,10 +70,12 @@ void loop() {
     irBuffer[i] = particleSensor.getIR();
     particleSensor.nextSample(); // Terminamos con esta muestra, así que pasamos a la siguiente
 
-    Serial.print(F("rojo="));
-    Serial.print(redBuffer[i], DEC);
-    Serial.print(F(", IR="));
-    Serial.println(irBuffer[i], DEC);
+    StaticJsonDocument<300> doc;
+    doc["red"] = redBuffer[i];
+    doc["ir"] = irBuffer[i];
+    String json;
+    serializeJson(doc, json);
+    Serial.println(json);
   }
 
   // calcula la frecuencia cardíaca y el SpO2 después de las primeras 100 muestras (primeros 4 segundos de muestras)
@@ -109,7 +112,7 @@ void loop() {
       float objtempc = mlx.readObjectTempC();
       if (!isnan(tempc) && !isnan(objtempc)){
         // Crear un documento JSON
-        StaticJsonDocument<200> doc;
+        StaticJsonDocument<512> doc;
         doc["red"] = redBuffer[i];
         doc["ir"] = irBuffer[i];
         doc["heartRate"] = heartRate;
@@ -122,10 +125,10 @@ void loop() {
         if (!fingerDetected) {
           doc["status"] = "Finger not detected";
         }
-
         // Serializar el JSON y enviarlo al puerto serie
-        serializeJson(doc, Serial);
-        Serial.println();
+        String json;
+        serializeJson(doc, json);
+        Serial.println(json);
       }
       
       //delay(500);
