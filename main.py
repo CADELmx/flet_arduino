@@ -240,7 +240,7 @@ class MainPage():
     def activate_mlx(self):
         """Activates the MLX sensor."""
         self.serial.write(text="MLX")
-    
+
     def update_arduino_status(self):
         """Updates the arduino status."""
         if self.serial.error:
@@ -295,7 +295,11 @@ class MainPage():
         if not route in self.routes:
             self.routes.add(route)
         self.nav_bar.destinations = [
-            NavigationDestination(data=r,label=f"Ir a {r}", icon=icons.ROUTE) for r in sorted(self.routes)
+            NavigationDestination(
+                data=r,
+                label=f"Ir a {r}",
+                icon=icons.ROUTE
+                ) for r in sorted(self.routes)
             ]
         return View(
             route,
@@ -336,4 +340,5 @@ def main(page: Page):
         thread.join()
     page.on_close = close
 
-app(target=main)
+if __name__ == "__main__":
+    app(target=main)
