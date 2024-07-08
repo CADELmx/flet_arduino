@@ -15,6 +15,7 @@ from flet import (
     Page,
     app,
     MainAxisAlignment,
+    CrossAxisAlignment,
     CupertinoSlider,
     FilledButton,
     dropdown,
@@ -68,7 +69,8 @@ class SetupSerial():
     def close(self):
         """Closes the serial port."""
         print("Closing serial connection")
-        self.instance.close()
+        if not self.error:
+            self.instance.close()
 
 class SetupThread():
     """Creates a thread with the specified target function."""
@@ -183,7 +185,9 @@ class RgbComponent():
                     icon_color="white",
                     on_click=self.change_color(),
                 )
-            ]
+            ],
+            horizontal_alignment=CrossAxisAlignment.CENTER,
+            alignment=MainAxisAlignment.CENTER,
         )
         return self.component
 
@@ -311,7 +315,7 @@ class MainPage():
                             self.arduino_status,
                             self.port_selector,
                             ],
-                        alignment=MainAxisAlignment.CENTER,
+                        horizontal_alignment=CrossAxisAlignment.CENTER,
                         )
                     ],
                     alignment=MainAxisAlignment.CENTER,
@@ -320,7 +324,7 @@ class MainPage():
                     [
                         Column(
                             fields,
-                            alignment=MainAxisAlignment.CENTER,
+                            horizontal_alignment=CrossAxisAlignment.CENTER,
                         )
                     ],
                     alignment=MainAxisAlignment.CENTER,
@@ -338,7 +342,7 @@ def main(page: Page):
     def close():
         serial.close()
         thread.join()
-    page.on_close = close
+    page.on_disconnect=close
 
 if __name__ == "__main__":
     app(target=main)
