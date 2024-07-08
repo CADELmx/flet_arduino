@@ -1,8 +1,12 @@
 """Module for monitoring humidity and temperature"""
-from json import JSONDecodeError, loads, dumps
+from json import JSONDecodeError, dumps, loads
 from time import sleep
 from threading import Thread
 from flet import (
+    icons,
+    NavigationBar,
+    NavigationDestination,
+    View,
     Text,
     TextField,
     Dropdown,
@@ -15,230 +19,326 @@ from flet import (
     FilledButton,
     dropdown,
     ControlEvent,
+    RouteChangeEvent
 )
 from serial import SerialTimeoutException, SerialException, PortNotOpenError, Serial
 
 DELAY = 5.0
 
-def setup_serial(port:str="COM1") -> dict:
-    """Returns a serial object with serial and timeout already set"""
-    serial_instance = {
-        "error": None,
-        "new_serial": None
-    }
-    try:
-        new_serial = Serial(port,9600,timeout=DELAY)
-        serial_instance.update("new_serial",new_serial)
-    except PortNotOpenError:
-        serial_instance.update("error","Error al abrir puerto")
-    except SerialTimeoutException:
-        serial_instance.update("error","Tiempo de espera excedido")
-    except SerialException:
-        serial_instance.update("error","Error en el puerto serial")
-    return serial_instance
-
-
-def update_serial_instance(
-        old_instance:dict,
-        new_instance:dict
-        ) -> dict:
-    """Updates the old serial object and sets new values from another serial object"""
-    new_instance.update("error",old_instance.get("error"))
-    new_instance.update("new_serial",old_instance.get("new_serial"))
-    return new_instance
-
-def setup_threads(func) -> Thread:
-    """Returns an initialized thread targeting a function"""
-    arduino_thread = Thread(target=func)
-    arduino_thread.start()
-    return arduino_thread
-
-def change_field_status(fields:list, status=True) -> None:
-    """Changes the status of a field"""
-    map(lambda field: field.disabled == status, fields)
-
-def update_arduino_values(
-    serial_object:dict,
-    humidity_field:TextField,
-    temperature_field:TextField,
-    page:Page
-    ):
-    """Updates the humidity and temperature fields with the values from the arduino"""
-    serial_line = serial_object.get("new_serial")
-    while True:
-        if serial_object.get("error") is not None:
-            continue
+class SetupSerial():
+    """Creates a serial connection with the specified parameters."""
+    error = False
+    instance = None
+    def __init__(self, port, baudrate, timeout):
+        self.setup(port, baudrate, timeout)
+    def setup(self, port='COM1', baudrate=9600, timeout=DELAY):
+        """Sets the serial connection with the specified parameters."""
+        print(f"Setting up serial connection with port {port}")
         try:
-            serial_data = serial_line.readline().decode("utf-8")
-            decoded_data = loads(serial_data)
-            print(decoded_data)
-            humidity_field.value = decoded_data["temperatura"]
-            temperature_field.value = decoded_data["humedad"]
-            page.update()
-        except JSONDecodeError:
-            pass
-        sleep(0.5)
+            self.instance = Serial(
+                port,
+                baudrate,
+                timeout
+                )
+            print(f"Serial connection with port {port} established")
+        except PortNotOpenError:
+            self.error = "Error al abrir puerto"
+        except SerialTimeoutException:
+            self.error = "Tiempo de espera excedido"
+        except SerialException:
+            self.error = "Error en el puerto serial"
+        return self
+    def change_port(self, port):
+        """Changes the serial port."""
+        if (not self.error) and self.instance.port == port:
+            return self
+        self.close()
+        self.setup(port=port)
+        return self
+    def read(self):
+        """Reads the serial port."""
+        if not self.error:
+            return self.instance.readline().decode("utf-8")
+        return "Error al leer datos"
+    def write(self, text:str):
+        """Writes to the serial port."""
+        if not self.error:
+            self.instance.write(text.encode("utf-8"))
+        return self
+    def close(self):
+        """Closes the serial port."""
+        print("Closing serial connection")
+        self.instance.close()
 
+class SetupThread():
+    """Creates a thread with the specified target function."""
+    error = None
+    instance = None
+    def __init__(self, target: callable):
+        self.setup(target)
+    def setup(self, target: callable):
+        """Sets the target function for the thread."""
+        print(f"Setting up thread with target {target}")
+        self.instance = Thread(target=target)
+        self.start()
+        return self
 
-def rgb_component(
-        page:Page,
-        serial_object:dict
-        ):
-    """Returns a component with RGB sliders and text fields"""
-    red_text = Text("0",color="red")
-    green_text = Text("0",color="green")
-    blue_text = Text("0",color="blue")
+    def update(self, target: callable):
+        """Updates the target function for the thread."""
+        print(f"Updating thread with target {target}")
+        self.join()
+        self.instance = Thread(target=target)
+        self.start()
+        return self
+    def start(self):
+        """Starts the thread."""
+        self.instance.start()
+        return self
+    def join(self):
+        """Joins the thread."""
+        print("stopping thread")
+        self.instance.join(timeout=0.1)
+        return self
 
-    def change_red_value(event:ControlEvent):
-        print(event.control.value)
-        red_text.value = str(int(event.control.value)).zfill(3)
-        page.update()
+class RgbComponent():
+    """Component for controlling an RGB LED."""
+    component = None
+    red_text = Text("000",color="red")
+    green_text = Text("000",color="green")
+    blue_text = Text("000",color="blue")
+    min=0
+    max=255
+    def __init__(self, page: Page, serial: SetupSerial):
+        self.page = page
+        self.ser = serial
 
-    def change_green_value(event:ControlEvent):
-        print(event.control.value)
-        green_text.value = str(int(event.control.value)).zfill(3)
-        page.update()
+    def strzfill(self, value):
+        """Returns a string with the value filled with zeros."""
+        return str(int(value)).zfill(3)
 
-    def change_blue_value(event:ControlEvent):
-        print(event.control.value)
-        blue_text.value = str(int(event.control.value)).zfill(3)
-        page.update()
+    def change_red_value(self, event: ControlEvent):
+        """Updates the red text value when the red slider is changed."""
+        self.red_text.value = self.strzfill(event.control.value)
+        self.page.update()
 
-    def change_color():
-        """Changes the color of the LED"""
-        serial_line = serial_object.get("new_serial")
+    def change_green_value(self, event: ControlEvent):
+        """Updates the green text value when the green slider is changed."""
+        self.green_text.value = self.strzfill(event.control.value)
+        self.page.update()
+
+    def change_blue_value(self, event: ControlEvent):
+        """Updates the blue text value when the blue slider is changed."""
+        self.blue_text.value = self.strzfill(event.control.value)
+        self.page.update()
+
+    def change_color(self):
+        """Sends the color to the serial port."""
         json_data = dumps({
-            "red":red_text.value,
-            "green":green_text.value,
-            "blue":blue_text.value
+            "red": self.red_text.value,
+            "green": self.green_text.value,
+            "blue": self.blue_text.value
         })
-        if not serial_line is None:
-            serial_line.write(json_data.encode("utf-8"))
+        self.ser.write(json_data)
 
-    component = Column(
-        [
-            CupertinoSlider(
-                on_change=change_red_value,
-                value=0,
-                divisions=255,
-                min=0,
-                max=255,
-                active_color="red",
-                thumb_color="red",
-            ),
-            CupertinoSlider(
-                on_change=change_green_value,
-                value=0,
-                divisions=255,
-                min=0,
-                max=255,
-                active_color="green",
-                thumb_color="green",
-            ),
-            CupertinoSlider(
-                on_change=change_blue_value,
-                value=0,
-                divisions=255,
-                min=0,
-                max=255,
-                active_color="blue",
-                thumb_color="blue",
-            ),
-            FilledButton(
-                text='Enviar color',
-                icon="send",
-                icon_color="white",
-                on_click=lambda e: change_color()
-            )
-        ],
-    )
-    rgb_text_fields = [red_text,green_text,blue_text]
-    return component, rgb_text_fields
-
-def set_title(page:Page):
-    """Sets the title and the alignment of the page"""
-    page.title = "Valores de arduino"
-    page.vertical_alignment = MainAxisAlignment.CENTER
-
-
-def main(page: Page) -> None:
-    """This function setup the page and manages the page content"""
-    serial_object = setup_serial(port="COM3")
-    arduino_status = Text("Conecta el arduino y selecciona el puerto serial")
-    rgb_controls, rgb_text_fields = rgb_component(page,serial_object)
-    def add_error_message(error_message="Algo salió mal"):
-        """Adds an error message to the page"""
-        arduino_status.value = error_message
-        page.update()
-
-    set_title(page=page)
-
-    txt_humidity = TextField(value="Humedad",read_only=True,disabled=True)
-    txt_temperature = TextField(value="Temperatura",read_only=True,disabled=True)
-
-    if not serial_object.get("error") is None:
-        change_field_status([txt_temperature, txt_humidity], status=False)
-        add_error_message(error_message=serial_object.get("error"))
-
-    def change_serial_port(serial_obj:dict,event:ControlEvent):
-        """Changes the serial port to the selected one"""
-        new_instance = update_serial_instance(
-            old_instance=serial_obj,
-            new_instance=setup_serial(event.control.value)
-            )
-        if not new_instance.get("error") is None:
-            change_field_status([txt_temperature, txt_humidity], status=False)
-            add_error_message(error_message=new_instance.get("error"))
-        else:
-            change_field_status([txt_temperature,txt_humidity], status=True)
-            add_error_message(error_message="Conectado al arduino")
-        print(f"Serial port changed to {event.control.value}")
-
-    page.add(
-        Row(
+    def build(self):
+        """Builds the controls for the RGB component."""
+        print("Building RGB component")
+        self.component = Column(
             [
-                arduino_status
+                CupertinoSlider(
+                    min=self.min,
+                    max=self.max,
+                    divisions=self.max,
+                    value=0,
+                    active_color="red",
+                    thumb_color="red",
+                    on_change=self.change_red_value,
+                ),
+                CupertinoSlider(
+                    min=self.min,
+                    max=self.max,
+                    divisions=self.max,
+                    value=0,
+                    active_color="green",
+                    thumb_color="green",
+                    on_change=self.change_green_value,
+                ),
+                CupertinoSlider(
+                    min=self.min,
+                    max=self.max,
+                    divisions=self.max,
+                    value=0,
+                    active_color="blue",
+                    thumb_color="blue",
+                    on_change=self.change_blue_value,
+                ),
+                Row([
+                    self.red_text,
+                    self.green_text,
+                    self.blue_text,
+                ]),
+                FilledButton(
+                    text="Enviar color",
+                    icon="send",
+                    icon_color="white",
+                    on_click=self.change_color(),
+                )
+            ]
+        )
+        return self.component
+
+class MainPage():
+    """Main page for the application."""
+    component = None
+    thread = None
+    routes = {'/', '/mlx'}
+    arduino_status = Text("Arduino desconectado",color="red")
+    port_selector = Dropdown(
+        width=200,
+        options=[
+            dropdown.Option("COM1", "COM1"),
+            dropdown.Option("COM2", "COM2"),
+            dropdown.Option("COM3", "COM3"),
+            dropdown.Option("COM4", "COM4"),
             ],
-            alignment=MainAxisAlignment.CENTER,
-        ),
-        Row(
+        label="Puerto serial"
+    )
+    nav_bar = NavigationBar(
+        adaptive=True,
+    )
+    mlx_activador = FilledButton(
+        text="Activar MLX",
+        icon="power",
+        icon_color="white",
+    )
+    mlx_field = TextField(value='MLX',read_only=True,disabled=True, min_lines=2)
+    temp_field = TextField(value='Humedad y temperatura',read_only=True,disabled=True, min_lines=2)
+
+    def __init__(self, page: Page, serial: SetupSerial, thread: SetupThread):
+        self.serial = serial
+        self.page = page
+        self.thread = thread
+        self.port_selector.on_change = self.change_port
+        self.nav_bar.on_change = self.change_route
+        self.page.on_route_change = self.route_change
+        self.mlx_activador.on_click = lambda _: self.activate_mlx()
+
+    def update_from_serial(self, text_field: TextField):
+        """Updates the text from the serial port."""
+        print("Updating from serial")
+        while True:
+            try:
+                line = self.serial.read()
+                text_field.value = line
+                print(f"Updating text field with {line}")
+                print(f"{loads(line)}")
+                self.page.update()
+            except JSONDecodeError:
+                pass
+            sleep(0.5)
+
+    def activate_mlx(self):
+        """Activates the MLX sensor."""
+        self.serial.write(text="MLX")
+
+    def update_arduino_status(self):
+        """Updates the arduino status."""
+        if self.serial.error:
+            self.arduino_status.value = self.serial.error
+            self.arduino_status.color = "red"
+        else:
+            self.arduino_status.value = "Arduino conectado"
+            self.arduino_status.color = "green"
+        self.page.update()
+
+    def fields_status(self, fields: list, status: bool = True):
+        """Updates the field status."""
+        map(lambda field: field.disabled == status, fields)
+        self.page.update()
+
+    def change_port(self, event: ControlEvent):
+        """Changes the serial port."""
+        self.fields_status([self.temp_field, self.mlx_field], self.serial.error)
+        self.serial.change_port(event.control.value)
+        self.update_arduino_status()
+
+    def change_route(self, event: ControlEvent):
+        """Changes the routes in the application."""
+        control: NavigationBar = event.control
+        destination = control.destinations[int(event.data)].data
+        self.page.go(destination)
+
+    def route_change(self, route_event: RouteChangeEvent):
+        """Changes the route in the application."""
+        print(f"Route changed to {route_event.route}")
+        self.page.views.clear()
+        if route_event.route == '/':
+            self.thread.update(target=lambda: self.update_from_serial(self.temp_field))
+            self.page.views.append(self.create_view(
+                '/',
+                fields=[
+                    self.temp_field,
+                    RgbComponent(self.page, self.serial).build(),
+                ]
+            ))
+        if route_event.route == '/mlx':
+            self.thread.update(target=lambda: self.update_from_serial(self.mlx_field))
+            self.page.views.append(self.create_view(
+                '/mlx',
+                fields=[self.mlx_field, self.mlx_activador]
+            ))
+        self.page.update()
+
+    def create_view(self, route: str, fields: dict):
+        """Creates the view for the main page."""
+        print(f"Creating view for route {route}")
+        if not route in self.routes:
+            self.routes.add(route)
+        self.nav_bar.destinations = [
+            NavigationDestination(
+                data=r,
+                label=f"Ir a {r}",
+                icon=icons.ROUTE
+                ) for r in sorted(self.routes)
+            ]
+        return View(
+            route,
             [
-                Dropdown(
-                    width=200,
-                    options=[
-                        dropdown.Option("COM1", "COM1"),
-                        dropdown.Option("COM2", "COM2"),
-                        dropdown.Option("COM3", "COM3"),
-                        dropdown.Option("COM4", "COM4"),
+                Row(
+                    [
+                        Column(
+                            [
+                            self.arduino_status,
+                            self.port_selector,
+                            ],
+                        alignment=MainAxisAlignment.CENTER,
+                        )
                     ],
-                    label="Puerto serial",
-                    on_change=lambda e:
-                        change_serial_port(serial_obj=serial_object,event=e)
+                    alignment=MainAxisAlignment.CENTER,
+                ),
+                Row(
+                    [
+                        Column(
+                            fields,
+                            alignment=MainAxisAlignment.CENTER,
+                        )
+                    ],
+                    alignment=MainAxisAlignment.CENTER,
                 )
             ],
-            alignment=MainAxisAlignment.CENTER,
-        ),
-        Row(
-            [
-                txt_humidity,
-                txt_temperature
-            ],
-            alignment=MainAxisAlignment.CENTER,
-        ),
-        Row(
-            rgb_text_fields,
-            alignment=MainAxisAlignment.CENTER,
-        ),
-        Row(
-            [
-                rgb_controls
-            ],
-            alignment=MainAxisAlignment.CENTER,
-        )
-    )
-    setup_threads(
-        func=lambda:
-            update_arduino_values(serial_object,txt_humidity,txt_temperature,page)
+            navigation_bar=self.nav_bar
         )
 
-app(main)
+def main(page: Page):
+    """Main function for the application."""
+    serial = SetupSerial(port='COM1', baudrate=9600, timeout=DELAY)
+    thread = SetupThread(target=lambda: print("Thread started"))
+    MainPage(page=page, serial=serial, thread=thread)
+    page.go(page.route)
+    def close():
+        serial.close()
+        thread.join()
+    page.on_close = close
+
+if __name__ == "__main__":
+    app(target=main)
