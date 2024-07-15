@@ -59,7 +59,10 @@ class SetupSerial():
     def read(self):
         """Reads the serial port."""
         if not self.error:
-            return self.instance.readline().decode("utf-8")
+            try:
+                return self.instance.readline()
+            except UnicodeDecodeError:
+                return "Error al decodificar datos"
         return "Error al leer datos"
     def write(self, text:str):
         """Writes to the serial port."""
@@ -233,8 +236,8 @@ class MainPage():
         while True:
             try:
                 line = self.serial.read()
-                text_field.value = line
-                print(f"Updating text field with {line}")
+                text_field.value = ord(str(line)[1])
+                print(f"Updating text field with {ord(str(line)[1])}")
                 print(f"{loads(line)}")
                 self.page.update()
             except JSONDecodeError:
