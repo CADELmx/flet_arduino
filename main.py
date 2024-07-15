@@ -9,6 +9,7 @@ from flet import (
     View,
     Text,
     TextField,
+    Image,
     Dropdown,
     Row,
     Column,
@@ -60,6 +61,7 @@ class SetupSerial():
         """Reads the serial port."""
         if not self.error:
             try:
+                print(self.instance.readline().decode("utf-8"))
                 return self.instance.readline()
             except UnicodeDecodeError:
                 return "Error al decodificar datos"
@@ -219,7 +221,11 @@ class MainPage():
         icon_color="white",
     )
     mlx_field = TextField(value='MLX',read_only=True,disabled=True, min_lines=2)
+    max_field = TextField(value='MAX',read_only=True,disabled=True, min_lines=2)
     temp_field = TextField(value='Humedad y temperatura',read_only=True,disabled=True, min_lines=2)
+
+    max_img = Image('./img/max_oxygen.jpeg', width=50, height=50)
+    mlx_img = Image('./img/mlx_temp.jpeg', width=50, height=50)
 
     def __init__(self, page: Page, serial: SetupSerial, thread: SetupThread):
         self.serial = serial
@@ -230,15 +236,18 @@ class MainPage():
         self.page.on_route_change = self.route_change
         self.mlx_activador.on_click = lambda _: self.activate_mlx()
 
-    def update_from_serial(self, text_field: TextField):
+    def update_from_serial(self, primary_field: TextField, secondary_field: TextField = None):
         """Updates the text from the serial port."""
         print("Updating from serial")
         while True:
             try:
                 line = self.serial.read()
-                text_field.value = ord(str(line)[1])
-                print(f"Updating text field with {ord(str(line)[1])}")
-                print(f"{loads(line)}")
+                if primary_field and str(line)[1]:
+                    primary_field.value = ord(str(line)[1])
+                    print(f"Updating text field with {ord(str(line)[1])}")
+                if secondary_field and str(line)[3]:
+                    secondary_field.value = ord(str(line)[3])
+                    print(f"Updating text field with {ord(str(line)[1])}")
                 self.page.update()
             except JSONDecodeError:
                 pass
@@ -289,10 +298,10 @@ class MainPage():
                 ]
             ))
         if route_event.route == '/mlx':
-            self.thread.update(target=lambda: self.update_from_serial(self.mlx_field))
+            self.thread.update(target=lambda: self.update_from_serial(self.mlx_field, self.max_field))
             self.page.views.append(self.create_view(
                 '/mlx',
-                fields=[self.mlx_field, self.mlx_activador]
+                fields=[Row([self.mlx_img, self.mlx_field]), Row([self.max_img, self.max_field]), self.mlx_activador]
             ))
         self.page.update()
 
@@ -338,7 +347,7 @@ class MainPage():
 
 def main(page: Page):
     """Main function for the application."""
-    serial = SetupSerial(port='COM1', baudrate=9600, timeout=DELAY)
+    serial = SetupSerial(port='COM4', baudrate=9600, timeout=DELAY)
     thread = SetupThread(target=lambda: print("Thread started"))
     MainPage(page=page, serial=serial, thread=thread)
     page.go(page.route)
