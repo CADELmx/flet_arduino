@@ -1,8 +1,16 @@
 """Module for monitoring humidity and temperature"""
-from json import JSONDecodeError, dumps, loads
+from json import JSONDecodeError, dumps
 from time import sleep
+from os import environ
 from threading import Thread
+from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure
 from flet import (
+    LineChart,
+    LineChartData,
+    LineChartDataPoint,
+    ChartAxis,
+    ChartAxisLabel,
     icons,
     NavigationBar,
     NavigationDestination,
@@ -107,6 +115,33 @@ class SetupThread():
         self.instance.join(timeout=0.1)
         return self
 
+class SetupDatabase():
+    """Creates a mongo database connection."""
+    error = None
+    client = None
+    connection_string = environ.get('MONGODB_URI')
+    def __init__(self):
+        self.setup()
+
+    def setup(self):
+        """Sets up the database connection."""
+        try:
+            print("Setting up database connection")
+            self.client = MongoClient(self.connection_string)
+            print("Database connection established")
+            self.db = self.client.get_database("flet_database")
+            self.collection = self.db.get_collection("data")
+        except ConnectionFailure:
+            self.error = "Error al establecer conexión"
+            return self
+        return self
+
+    def insert(self, data: dict):
+        """Inserts data into the database."""
+        if not self.error:
+            self.collection.insert_one(data)
+        return self
+
 class RgbComponent():
     """Component for controlling an RGB LED."""
     component = None
@@ -196,12 +231,48 @@ class RgbComponent():
         )
         return self.component
 
+class MLXChart():
+    """Chart for the MLX sensor."""
+    data_line_1 = LineChartData(
+        stroke_width=2,
+        color="red",
+        stroke_cap_round=True,
+    )
+    def __init__(self) -> None:
+        pass
+
+    def add_point(self, x,y):
+        """Adds a point to the chart."""
+        self.data_line_1.data_points.append(LineChartDataPoint(x=x, y=y))
+        return self
+
+    def build(self):
+        """Builds the chart."""
+        return LineChart(
+            data=[self.data_line_1],
+            left_axis=ChartAxis(
+                title="Tiempo",
+            ),
+            bottom_axis=ChartAxis(
+                labels=[
+                    ChartAxisLabel(
+                        value=0,
+                        label="Tiempo",
+                    )
+                ],
+                labels_interval=10,
+            ),
+            width=300,
+            height=200,
+        )
+
 class MainPage():
     """Main page for the application."""
     component = None
     thread = None
     routes = {'/', '/mlx'}
     arduino_status = Text("Arduino desconectado",color="red")
+    database_status = Text("Base de datos desconectada",color="red")
     port_selector = Dropdown(
         width=200,
         options=[
@@ -215,7 +286,7 @@ class MainPage():
     nav_bar = NavigationBar(
         adaptive=True,
     )
-    mlx_activador = FilledButton(
+    mlx_activator = FilledButton(
         text="Activar MLX",
         icon="power",
         icon_color="white",
@@ -227,14 +298,21 @@ class MainPage():
     max_img = Image('./img/max_oxygen.jpeg', width=50, height=50)
     mlx_img = Image('./img/mlx_temp.jpeg', width=50, height=50)
 
-    def __init__(self, page: Page, serial: SetupSerial, thread: SetupThread):
+    def __init__(
+            self, page: Page,
+            serial: SetupSerial,
+            thread: SetupThread,
+            database: SetupDatabase
+            ):
         self.serial = serial
         self.page = page
         self.thread = thread
+        self.database = database
         self.port_selector.on_change = self.change_port
         self.nav_bar.on_change = self.change_route
         self.page.on_route_change = self.route_change
-        self.mlx_activador.on_click = lambda _: self.activate_mlx()
+        self.mlx_activator.on_click = lambda _: self.activate_mlx()
+        self.update_database_status()
 
     def update_from_serial(self, primary_field: TextField, secondary_field: TextField = None):
         """Updates the text from the serial port."""
@@ -245,8 +323,10 @@ class MainPage():
                 if primary_field and str(line)[1]:
                     primary_field.value = ord(str(line)[1])
                     print(f"Updating text field with {ord(str(line)[1])}")
+                    self.database.collection.insert_one({"max_medida": ord(str(line)[1])})
                 if secondary_field and str(line)[3]:
                     secondary_field.value = ord(str(line)[3])
+                    self.database.collection.insert_one({"mlx_medida": ord(str(line)[3])})
                     print(f"Updating text field with {ord(str(line)[1])}")
                 self.page.update()
             except JSONDecodeError:
@@ -265,6 +345,16 @@ class MainPage():
         else:
             self.arduino_status.value = "Arduino conectado"
             self.arduino_status.color = "green"
+        self.page.update()
+
+    def update_database_status(self):
+        """Updates the database status."""
+        if self.database.error:
+            self.database_status.value = self.database.error
+            self.database_status.color = "red"
+        else:
+            self.database_status.value = "Base de datos conectada"
+            self.database_status.color = "green"
         self.page.update()
 
     def fields_status(self, fields: list, status: bool = True):
@@ -298,10 +388,16 @@ class MainPage():
                 ]
             ))
         if route_event.route == '/mlx':
-            self.thread.update(target=lambda: self.update_from_serial(self.mlx_field, self.max_field))
+            self.thread.update(
+                target=lambda: self.update_from_serial(self.mlx_field, self.max_field)
+                )
             self.page.views.append(self.create_view(
                 '/mlx',
-                fields=[Row([self.mlx_img, self.mlx_field]), Row([self.max_img, self.max_field]), self.mlx_activador]
+                fields=[
+                    Row([self.mlx_img, self.mlx_field]),
+                    Row([self.max_img, self.max_field]),
+                    self.mlx_activator
+                ]
             ))
         self.page.update()
 
@@ -326,6 +422,7 @@ class MainPage():
                             [
                             self.arduino_status,
                             self.port_selector,
+                            self.database_status
                             ],
                         horizontal_alignment=CrossAxisAlignment.CENTER,
                         )
@@ -349,7 +446,8 @@ def main(page: Page):
     """Main function for the application."""
     serial = SetupSerial(port='COM4', baudrate=9600, timeout=DELAY)
     thread = SetupThread(target=lambda: print("Thread started"))
-    MainPage(page=page, serial=serial, thread=thread)
+    client = SetupDatabase()
+    MainPage(page=page, serial=serial, thread=thread, database=client)
     page.go(page.route)
     def close():
         serial.close()

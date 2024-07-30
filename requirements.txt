@@ -32,6 +32,7 @@ packaging==23.2
 pydantic==2.7.2
 pydantic_core==2.18.3
 Pygments==2.18.0
+pymongo==4.8.0
 pypng==0.20220715.0
 pyserial==3.5
 python-dateutil==2.9.0.post0
